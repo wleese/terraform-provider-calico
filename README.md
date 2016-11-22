@@ -1,6 +1,11 @@
 # Calico Terraform Provider
 
+## About
+- For use with Calico 2.x with the etcd backend
+- Only Hostendpoints supported, more coming soon
+
 ## Install
+Due to the large amount of dependencies from libcalico-go and it's usage of glide for dep management, the install is a bit more than just a go get.
 ```
 $ go get github.com/wleese/terraform-provider-calico
 $ cd into terraform-provider-calico/vendor/github.com/projectcalico/libcalico-go
