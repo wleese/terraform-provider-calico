@@ -315,6 +315,125 @@ func resourceCalicoProfile() *schema.Resource {
 	}
 }
 
+func resourceCalicoProfileCreate(d *schema.ResourceData, meta interface{}) error {
+	config := meta.(config)
+	calicoClient := config.Client
+
+	metadata := dToProfileMetadata(d)
+	spec, err := dToProfileSpec(d)
+	if err != nil {
+		return err
+	}
+
+	profiles := calicoClient.Profiles()
+	if _, err = profiles.Create(&api.Profile{
+		Metadata: metadata,
+		Spec:     spec,
+	}); err != nil {
+		return err
+	}
+
+	d.SetId(metadata.Name)
+	return resourceCalicoProfileRead(d, meta)
+}
+
+func resourceCalicoProfileRead(d *schema.ResourceData, meta interface{}) error {
+	config := meta.(config)
+	calicoClient := config.Client
+
+	profiles := calicoClient.Profiles()
+	profile, err := profiles.Get(api.ProfileMetadata{
+		Name: d.Get("name").(string),
+	})
+
+	if err != nil {
+		if _, ok := err.(errors.ErrorResourceDoesNotExist); ok {
+			d.SetId("")
+			return nil
+		}
+	}
+
+	d.Set("name", profile.Metadata.Name)
+	d.Set("labels", profile.Metadata.Labels)
+
+	setSchemaFieldsForProfileSpec(profile, d)
+	return nil
+}
+
+func resourceCalicoProfileUpdate(d *schema.ResourceData, meta interface{}) error {
+	config := meta.(config)
+	calicoClient := config.Client
+
+	profiles := calicoClient.Profiles()
+
+	metadata := dToProfileMetadata(d)
+	if _, err := profiles.Get(metadata); err != nil {
+		if _, ok := err.(errors.ErrorResourceDoesNotExist); ok {
+			d.SetId("")
+			return nil
+		}
+	}
+
+	spec, err := dToProfileSpec(d)
+	if err != nil {
+		return err
+	}
+
+	if _, err = profiles.Apply(&api.Profile{
+		Metadata: metadata,
+		Spec:     spec,
+	}); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func resourceCalicoProfileDelete(d *schema.ResourceData, meta interface{}) error {
+	config := meta.(config)
+	calicoClient := config.Client
+
+	profiles := calicoClient.Profiles()
+	err := profiles.Delete(api.ProfileMetadata{
+		Name: d.Get("name").(string),
+	})
+
+	if err != nil {
+		if _, ok := err.(errors.ErrorResourceDoesNotExist); !ok {
+			return fmt.Errorf("ERROR: %v", err)
+		}
+	}
+
+	return nil
+}
+
+func setSchemaFieldsForProfileSpec(profile *api.Profile, d *schema.ResourceData) {
+	specArray := make([]interface{}, 2)
+
+	if profile.Spec.IngressRules != nil && len(profile.Spec.IngressRules) > 0 {
+		resourceRules := getRulesFromProfile(profile.Spec.IngressRules)
+		ruleMap := make(map[string]interface{})
+		ruleMap["rule"] = resourceRules
+		ruleMapArray := make([]interface{}, 1)
+		ruleMapArray[0] = ruleMap
+		ingressMap := make(map[string]interface{})
+		ingressMap["ingress"] = ruleMapArray
+		specArray[0] = ingressMap
+	}
+	if profile.Spec.EgressRules != nil && len(profile.Spec.EgressRules) > 0 {
+		resourceRules := getRulesFromProfile(profile.Spec.EgressRules)
+		ruleMap := make(map[string]interface{})
+		ruleMap["rule"] = resourceRules
+		ruleMapArray := make([]interface{}, 1)
+		ruleMapArray[0] = ruleMap
+		egressMap := make(map[string]interface{})
+		egressMap["egress"] = ruleMapArray
+		specArray[1] = egressMap
+	}
+
+	d.Set("spec", specArray)
+}
+
 func dToProfileMetadata(d *schema.ResourceData) api.ProfileMetadata {
 	metadata := api.ProfileMetadata{
 		Name: d.Get("name").(string),
@@ -333,7 +452,128 @@ func dToProfileMetadata(d *schema.ResourceData) api.ProfileMetadata {
 	return metadata
 }
 
-func mapToRule(mapStruct map[string]interface{}) (api.Rule, error) {
+func dToProfileSpec(d *schema.ResourceData) (api.ProfileSpec, error) {
+	spec := api.ProfileSpec{}
+
+	if v, ok := d.GetOk("spec.0.ingress.0.rule.#"); ok {
+		ingressRules := make([]api.Rule, v.(int))
+
+		for i := range ingressRules {
+			mapStruct := d.Get("spec.0.ingress.0.rule." + strconv.Itoa(i)).(map[string]interface{})
+
+			rule, err := resourceMapToRule(mapStruct)
+			if err != nil {
+				return spec, err
+			}
+
+			ingressRules[i] = rule
+		}
+		spec.IngressRules = ingressRules
+	}
+	if v, ok := d.GetOk("spec.0.egress.0.rule.#"); ok {
+		egressRules := make([]api.Rule, v.(int))
+
+		for i := range egressRules {
+			mapStruct := d.Get("spec.0.egress.0.rule." + strconv.Itoa(i)).(map[string]interface{})
+
+			rule, err := resourceMapToRule(mapStruct)
+			if err != nil {
+				return spec, err
+			}
+
+			egressRules[i] = rule
+		}
+		spec.EgressRules = egressRules
+	}
+
+	return spec, nil
+}
+
+func getRulesFromProfile(profileRules []api.Rule) []map[string]interface{} {
+	resourceRules := make([]map[string]interface{}, len(profileRules))
+
+	for i, rule := range profileRules {
+		resourceRule := make(map[string]interface{})
+		if len(rule.Action) > 0 {
+			resourceRule["action"] = rule.Action
+		}
+		if rule.Protocol != nil {
+			resourceRule["protocol"] = rule.Protocol.String()
+		}
+		if rule.ICMP != nil {
+			resourceIcmpArray := make([]map[string]int, 1)
+			resourceIcmpMap := make(map[string]int)
+
+			resourceIcmpMap["code"] = *rule.ICMP.Code
+			resourceIcmpMap["type"] = *rule.ICMP.Type
+
+			resourceIcmpArray[0] = resourceIcmpMap
+			resourceRule["icmp"] = resourceIcmpArray
+		}
+		if rule.NotICMP != nil {
+			resourceIcmpArray := make([]map[string]int, 1)
+			resourceIcmpMap := make(map[string]int)
+
+			resourceIcmpMap["code"] = *rule.ICMP.Code
+			resourceIcmpMap["type"] = *rule.ICMP.Type
+
+			resourceIcmpArray[0] = resourceIcmpMap
+			resourceRule["notICMP"] = resourceIcmpArray
+		}
+		if nonEmptyEntityRule(&rule.Source) {
+			resourceSourceArray := make([]map[string]interface{}, 1)
+
+			resourceSourceArray[0] = getEntityRuleMap(rule.Source)
+			resourceRule["source"] = resourceSourceArray
+		}
+		if nonEmptyEntityRule(&rule.Destination) {
+			resourceSourceArray := make([]map[string]interface{}, 1)
+
+			resourceSourceArray[0] = getEntityRuleMap(rule.Source)
+			resourceRule["destination"] = resourceSourceArray
+		}
+		resourceRules[i] = resourceRule
+	}
+
+	return resourceRules
+
+}
+
+func getEntityRuleMap(entityRule api.EntityRule) map[string]interface{} {
+	resourceSourceMap := make(map[string]interface{})
+
+	if entityRule.Net != nil {
+		resourceSourceMap["net"] = entityRule.Net.String()
+	}
+	if len(entityRule.Selector) > 0 {
+		resourceSourceMap["selector"] = entityRule.Selector
+	}
+	if len(entityRule.Ports) > 0 {
+		portsArray := make([]string, len(entityRule.Ports))
+		for i, v := range entityRule.Ports {
+			val := v.String()
+			portsArray[i] = val
+		}
+		resourceSourceMap["ports"] = portsArray
+	}
+	if entityRule.NotNet != nil {
+		resourceSourceMap["notNet"] = entityRule.NotNet.String()
+	}
+	if len(entityRule.NotSelector) > 0 {
+		resourceSourceMap["notSelector"] = entityRule.NotSelector
+	}
+	if len(entityRule.NotPorts) > 0 {
+		notPortsArray := make([]string, len(entityRule.NotPorts))
+		for i, v := range entityRule.NotPorts {
+			val := v.String()
+			notPortsArray[i] = val
+		}
+		resourceSourceMap["notPorts"] = notPortsArray
+	}
+	return resourceSourceMap
+}
+
+func resourceMapToRule(mapStruct map[string]interface{}) (api.Rule, error) {
 	rule := api.Rule{}
 
 	if val, ok := mapStruct["action"]; ok {
@@ -441,65 +681,6 @@ func toPortList(resourcePortList []interface{}) ([]numorstring.Port, error) {
 	return portList, nil
 }
 
-func dToProfileSpec(d *schema.ResourceData) (api.ProfileSpec, error) {
-	spec := api.ProfileSpec{}
-
-	if v, ok := d.GetOk("spec.0.ingress.0.rule.#"); ok {
-		ingressRules := make([]api.Rule, v.(int))
-
-		for i := range ingressRules {
-			mapStruct := d.Get("spec.0.ingress.0.rule." + strconv.Itoa(i)).(map[string]interface{})
-
-			rule, err := mapToRule(mapStruct)
-			if err != nil {
-				return spec, err
-			}
-
-			ingressRules[i] = rule
-		}
-		spec.IngressRules = ingressRules
-	}
-	if v, ok := d.GetOk("spec.0.egress.0.rule.#"); ok {
-		egressRules := make([]api.Rule, v.(int))
-
-		for i := range egressRules {
-			mapStruct := d.Get("spec.0.egress.0.rule." + strconv.Itoa(i)).(map[string]interface{})
-
-			rule, err := mapToRule(mapStruct)
-			if err != nil {
-				return spec, err
-			}
-
-			egressRules[i] = rule
-		}
-		spec.EgressRules = egressRules
-	}
-
-	return spec, nil
-}
-
-func resourceCalicoProfileCreate(d *schema.ResourceData, meta interface{}) error {
-	config := meta.(config)
-	calicoClient := config.Client
-
-	metadata := dToProfileMetadata(d)
-	spec, err := dToProfileSpec(d)
-	if err != nil {
-		return err
-	}
-
-	profiles := calicoClient.Profiles()
-	if _, err = profiles.Create(&api.Profile{
-		Metadata: metadata,
-		Spec:     spec,
-	}); err != nil {
-		return err
-	}
-
-	d.SetId(metadata.Name)
-	return resourceCalicoProfileRead(d, meta)
-}
-
 func nonEmptyEntityRule(entityRule *api.EntityRule) bool {
 	state := false
 
@@ -529,187 +710,4 @@ func nonEmptyEntityRule(entityRule *api.EntityRule) bool {
 	}
 
 	return state
-}
-
-func resourceCalicoProfileRead(d *schema.ResourceData, meta interface{}) error {
-	config := meta.(config)
-	calicoClient := config.Client
-
-	profiles := calicoClient.Profiles()
-	profile, err := profiles.Get(api.ProfileMetadata{
-		Name: d.Get("name").(string),
-	})
-
-	// Handle endpoint does not exist
-	if err != nil {
-		if _, ok := err.(errors.ErrorResourceDoesNotExist); ok {
-			d.SetId("")
-			return nil
-		}
-	}
-
-	d.Set("name", profile.Metadata.Name)
-	d.Set("labels", profile.Metadata.Labels)
-
-	setSchemaFieldsForProfileSpec(profile, d)
-	return nil
-}
-
-func setResourceRulesFromProfile(profileRules []api.Rule) []map[string]interface{} {
-	resourceRules := make([]map[string]interface{}, len(profileRules))
-
-	for i, rule := range profileRules {
-		resourceRule := make(map[string]interface{})
-		if len(rule.Action) > 0 {
-			resourceRule["action"] = rule.Action
-		}
-		if rule.Protocol != nil {
-			resourceRule["protocol"] = rule.Protocol.String()
-		}
-		if rule.ICMP != nil {
-			resourceIcmpArray := make([]map[string]int, 1)
-			resourceIcmpMap := make(map[string]int)
-
-			resourceIcmpMap["code"] = *rule.ICMP.Code
-			resourceIcmpMap["type"] = *rule.ICMP.Type
-
-			resourceIcmpArray[0] = resourceIcmpMap
-			resourceRule["icmp"] = resourceIcmpArray
-		}
-		if rule.NotICMP != nil {
-			resourceIcmpArray := make([]map[string]int, 1)
-			resourceIcmpMap := make(map[string]int)
-
-			resourceIcmpMap["code"] = *rule.ICMP.Code
-			resourceIcmpMap["type"] = *rule.ICMP.Type
-
-			resourceIcmpArray[0] = resourceIcmpMap
-			resourceRule["notICMP"] = resourceIcmpArray
-		}
-		if nonEmptyEntityRule(&rule.Source) {
-			resourceSourceArray := make([]map[string]interface{}, 1)
-
-			resourceSourceArray[0] = createResourceEntityRule(rule.Source)
-			resourceRule["source"] = resourceSourceArray
-		}
-		if nonEmptyEntityRule(&rule.Destination) {
-			resourceSourceArray := make([]map[string]interface{}, 1)
-
-			resourceSourceArray[0] = createResourceEntityRule(rule.Source)
-			resourceRule["destination"] = resourceSourceArray
-		}
-		resourceRules[i] = resourceRule
-	}
-
-	return resourceRules
-
-}
-func createResourceEntityRule(entityRule api.EntityRule) map[string]interface{} {
-	resourceSourceMap := make(map[string]interface{})
-
-	if entityRule.Net != nil {
-		resourceSourceMap["net"] = entityRule.Net.String()
-	}
-	if len(entityRule.Selector) > 0 {
-		resourceSourceMap["selector"] = entityRule.Selector
-	}
-	if len(entityRule.Ports) > 0 {
-		portsArray := make([]string, len(entityRule.Ports))
-		for i, v := range entityRule.Ports {
-			val := v.String()
-			portsArray[i] = val
-		}
-		resourceSourceMap["ports"] = portsArray
-	}
-	if entityRule.NotNet != nil {
-		resourceSourceMap["notNet"] = entityRule.NotNet.String()
-	}
-	if len(entityRule.NotSelector) > 0 {
-		resourceSourceMap["notSelector"] = entityRule.NotSelector
-	}
-	if len(entityRule.NotPorts) > 0 {
-		notPortsArray := make([]string, len(entityRule.NotPorts))
-		for i, v := range entityRule.NotPorts {
-			val := v.String()
-			notPortsArray[i] = val
-		}
-		resourceSourceMap["notPorts"] = notPortsArray
-	}
-	return resourceSourceMap
-}
-
-func setSchemaFieldsForProfileSpec(profile *api.Profile, d *schema.ResourceData) {
-
-	// Structure for this is pretty convulted. e.g.
-	//   spec.0.ingress.0.rule.0.source.0.ports.0
-	specArray := make([]interface{}, 2)
-	if profile.Spec.IngressRules != nil && len(profile.Spec.IngressRules) > 0 {
-		resourceRules := setResourceRulesFromProfile(profile.Spec.IngressRules)
-		ruleMap := make(map[string]interface{})
-		ruleMap["rule"] = resourceRules
-		ruleMapArray := make([]interface{}, 1)
-		ruleMapArray[0] = ruleMap
-		ingressMap := make(map[string]interface{})
-		ingressMap["ingress"] = ruleMapArray
-		specArray[0] = ingressMap
-	}
-	if profile.Spec.EgressRules != nil && len(profile.Spec.EgressRules) > 0 {
-		resourceRules := setResourceRulesFromProfile(profile.Spec.EgressRules)
-		ruleMap := make(map[string]interface{})
-		ruleMap["rule"] = resourceRules
-		ruleMapArray := make([]interface{}, 1)
-		ruleMapArray[0] = ruleMap
-		egressMap := make(map[string]interface{})
-		egressMap["egress"] = ruleMapArray
-		specArray[1] = egressMap
-	}
-	d.Set("spec", specArray)
-}
-
-func resourceCalicoProfileUpdate(d *schema.ResourceData, meta interface{}) error {
-	config := meta.(config)
-	calicoClient := config.Client
-
-	profiles := calicoClient.Profiles()
-
-	// Handle non-existent resource
-	metadata := dToProfileMetadata(d)
-	if _, err := profiles.Get(metadata); err != nil {
-		if _, ok := err.(errors.ErrorResourceDoesNotExist); ok {
-			d.SetId("")
-			return nil
-		}
-	}
-
-	spec, err := dToProfileSpec(d)
-	if err != nil {
-		return err
-	}
-
-	if _, err = profiles.Apply(&api.Profile{
-		Metadata: metadata,
-		Spec:     spec,
-	}); err != nil {
-		return err
-	}
-
-	return nil
-}
-
-func resourceCalicoProfileDelete(d *schema.ResourceData, meta interface{}) error {
-	config := meta.(config)
-	calicoClient := config.Client
-
-	profiles := calicoClient.Profiles()
-	err := profiles.Delete(api.ProfileMetadata{
-		Name: d.Get("name").(string),
-	})
-
-	if err != nil {
-		if _, ok := err.(errors.ErrorResourceDoesNotExist); !ok {
-			return fmt.Errorf("ERROR: %v", err)
-		}
-	}
-
-	return nil
 }
