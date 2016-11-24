@@ -155,7 +155,12 @@ func resourceCalicoHostendpointRead(d *schema.ResourceData, meta interface{}) er
 	d.Set("labels", hostEndpoint.Metadata.Labels)
 
 	d.Set("profiles", hostEndpoint.Spec.Profiles)
-	d.Set("expected_ips", hostEndpoint.Spec.ExpectedIPs)
+
+	ipList := make([]string, len(hostEndpoint.Spec.ExpectedIPs))
+	for i, ip := range hostEndpoint.Spec.ExpectedIPs {
+		ipList[i] = ip.String()
+	}
+	d.Set("expected_ips", ipList)
 	d.Set("interface", hostEndpoint.Spec.InterfaceName)
 
 	return nil

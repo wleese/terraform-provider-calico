@@ -54,13 +54,13 @@ cp terraform-provider-calico $WORKDIR
 cp testing/* $WORKDIR
 cd $WORKDIR
 
-if ! grep "${WD}/terraform-provider-calico" ~/.terraformrc 2>&1 > /dev/null; then
+if ! grep "${WD}/${WORKDIR}/test/terraform-provider-calico" ~/.terraformrc 2>&1 > /dev/null; then
   echo
-  echo "You'll have to change your ~/.terraform.rc file to include this"
+  echo "You'll have to change your ~/.terraformrc file to include this"
   echo "if you want to continue running these tests:"
   echo
   echo "providers {"
-  echo "  calico = \"${WD}/terraform-provider-calico\""
+  echo "  calico = \"${WD}/${WORKDIR}/test/terraform-provider-calico\""
   echo "}"
   exit 1
 fi
