@@ -420,7 +420,7 @@ func setSchemaFieldsForProfileSpec(profile *api.Profile, d *schema.ResourceData)
 		ruleMapArray[0] = ruleMap
 		ingressMap := make(map[string]interface{})
 		ingressMap["ingress"] = ruleMapArray
-		specArray[0] = ingressMap
+		specArray[1] = ingressMap
 	}
 	if profile.Spec.EgressRules != nil && len(profile.Spec.EgressRules) > 0 {
 		resourceRules := getRulesFromProfile(profile.Spec.EgressRules)
@@ -430,7 +430,7 @@ func setSchemaFieldsForProfileSpec(profile *api.Profile, d *schema.ResourceData)
 		ruleMapArray[0] = ruleMap
 		egressMap := make(map[string]interface{})
 		egressMap["egress"] = ruleMapArray
-		specArray[1] = egressMap
+		specArray[0] = egressMap
 	}
 
 	d.Set("spec", specArray)
@@ -459,11 +459,11 @@ func dToProfileMetadata(d *schema.ResourceData) api.ProfileMetadata {
 func dToProfileSpec(d *schema.ResourceData) (api.ProfileSpec, error) {
 	spec := api.ProfileSpec{}
 
-	if v, ok := d.GetOk("spec.0.ingress.0.rule.#"); ok {
+	if v, ok := d.GetOk("spec.1.ingress.0.rule.#"); ok {
 		ingressRules := make([]api.Rule, v.(int))
 
 		for i := range ingressRules {
-			mapStruct := d.Get("spec.0.ingress.0.rule." + strconv.Itoa(i)).(map[string]interface{})
+			mapStruct := d.Get("spec.1.ingress.0.rule." + strconv.Itoa(i)).(map[string]interface{})
 
 			rule, err := resourceMapToRule(mapStruct)
 			if err != nil {
