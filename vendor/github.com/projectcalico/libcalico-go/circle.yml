@@ -1,0 +1,17 @@
+general:
+  artifacts:
+    - "dist"
+machine:
+  services:
+    - docker
+dependencies:
+  override:
+    - echo "Nothing please"
+test:
+  override:
+    - make test-containerized
+experimental:
+  notify:
+    branches:
+      only:
+        - master
