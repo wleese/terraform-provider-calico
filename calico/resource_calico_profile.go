@@ -357,6 +357,7 @@ func resourceCalicoProfileRead(d *schema.ResourceData, meta interface{}) error {
 	d.Set("labels", profile.Metadata.Labels)
 
 	setSchemaFieldsForProfileSpec(profile, d)
+
 	return nil
 }
 
@@ -407,6 +408,7 @@ func resourceCalicoProfileDelete(d *schema.ResourceData, meta interface{}) error
 	return nil
 }
 
+// set Schema Fields based on existing Profile Specs
 func setSchemaFieldsForProfileSpec(profile *api.Profile, d *schema.ResourceData) {
 	specArray := make([]interface{}, 2)
 
@@ -434,6 +436,7 @@ func setSchemaFieldsForProfileSpec(profile *api.Profile, d *schema.ResourceData)
 	d.Set("spec", specArray)
 }
 
+// set Metadata based on existing Profile Metadata
 func dToProfileMetadata(d *schema.ResourceData) api.ProfileMetadata {
 	metadata := api.ProfileMetadata{
 		Name: d.Get("name").(string),
@@ -452,6 +455,7 @@ func dToProfileMetadata(d *schema.ResourceData) api.ProfileMetadata {
 	return metadata
 }
 
+// create Profile based on resource data
 func dToProfileSpec(d *schema.ResourceData) (api.ProfileSpec, error) {
 	spec := api.ProfileSpec{}
 
@@ -489,6 +493,7 @@ func dToProfileSpec(d *schema.ResourceData) (api.ProfileSpec, error) {
 	return spec, nil
 }
 
+// read existing Profile Rules into a map for easy consumption
 func getRulesFromProfile(profileRules []api.Rule) []map[string]interface{} {
 	resourceRules := make([]map[string]interface{}, len(profileRules))
 
@@ -529,7 +534,7 @@ func getRulesFromProfile(profileRules []api.Rule) []map[string]interface{} {
 		if nonEmptyEntityRule(&rule.Destination) {
 			resourceSourceArray := make([]map[string]interface{}, 1)
 
-			resourceSourceArray[0] = getEntityRuleMap(rule.Source)
+			resourceSourceArray[0] = getEntityRuleMap(rule.Destination)
 			resourceRule["destination"] = resourceSourceArray
 		}
 		resourceRules[i] = resourceRule
@@ -539,6 +544,7 @@ func getRulesFromProfile(profileRules []api.Rule) []map[string]interface{} {
 
 }
 
+// read existing Source/Destination Entity Rules into a map for easy consumption
 func getEntityRuleMap(entityRule api.EntityRule) map[string]interface{} {
 	resourceSourceMap := make(map[string]interface{})
 
@@ -573,6 +579,7 @@ func getEntityRuleMap(entityRule api.EntityRule) map[string]interface{} {
 	return resourceSourceMap
 }
 
+// convert resourceMap to an api.Rule
 func resourceMapToRule(mapStruct map[string]interface{}) (api.Rule, error) {
 	rule := api.Rule{}
 
@@ -668,6 +675,7 @@ func resourceMapToRule(mapStruct map[string]interface{}) (api.Rule, error) {
 	return rule, nil
 }
 
+// create an array of Ports
 func toPortList(resourcePortList []interface{}) ([]numorstring.Port, error) {
 	portList := make([]numorstring.Port, len(resourcePortList))
 
@@ -681,6 +689,7 @@ func toPortList(resourcePortList []interface{}) ([]numorstring.Port, error) {
 	return portList, nil
 }
 
+// check if Entity Rule is empty
 func nonEmptyEntityRule(entityRule *api.EntityRule) bool {
 	state := false
 
