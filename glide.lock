@@ -1,5 +1,5 @@
-hash: 4ee09f8011036454613fd595e1519ece7a1ca39192487c55adb55e5338ed8455
-updated: 2016-11-25T13:17:33.872225883+01:00
+hash: 0bfb92749741fb7cc81e69384295dda3100b9a737794b417cf6012280815c67b
+updated: 2016-11-25T13:52:07.233958611+01:00
 imports:
 - name: cloud.google.com/go
   version: 3b1ae45394a234c385be014e9a488f2bb6eef821
@@ -85,7 +85,7 @@ imports:
   - log
   - swagger
 - name: github.com/ghodss/yaml
-  version: bea76d6a4713e18b7f5321a2b020738552def3ea
+  version: 73d445a93680fa1a78ae23a5839bad48f32ba1ee
 - name: github.com/go-ini/ini
   version: 2e44421e256d82ebbf3d4d4fcabe8930b905eff3
 - name: github.com/go-openapi/jsonpointer
@@ -142,11 +142,12 @@ imports:
   - parser
   - scanner
 - name: github.com/hashicorp/terraform
-  version: bbf133fd21e98d205b5c0570187822f3b0546bed
+  version: b313e55fe78704bba47d51d42a0a65cff4cf8063
   subpackages:
   - config
   - config/module
   - dag
+  - dot
   - flatmap
   - helper/experiment
   - helper/hashcode
@@ -186,7 +187,7 @@ imports:
 - name: github.com/pborman/uuid
   version: ca53cad383cad2479bbba7f7a1a05797ec1386e4
 - name: github.com/projectcalico/libcalico-go
-  version: ac7658948424d886ebb34a0205501e74999a482b
+  version: ef0ff501cca9fe87dd1580f1f7442884a551dc4b
   subpackages:
   - lib/api
   - lib/api/unversioned
