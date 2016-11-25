@@ -7,7 +7,6 @@ import (
 	"github.com/hashicorp/terraform/helper/schema"
 	"github.com/hashicorp/terraform/terraform"
 	"github.com/projectcalico/libcalico-go/lib/api"
-	"github.com/projectcalico/libcalico-go/lib/backend/etcd"
 	"github.com/projectcalico/libcalico-go/lib/client"
 )
 
@@ -82,24 +81,21 @@ func Provider() terraform.ResourceProvider {
 
 func providerConfigure(d *schema.ResourceData) (interface{}, error) {
 
-	calicoConfig := api.ClientConfig{}
+	calicoConfig := api.CalicoAPIConfig{}
 
 	backendType := d.Get("backend_type").(string)
 
 	if backendType == "etcdv2" {
-		var etcdConfig = etcd.EtcdConfig{
-			EtcdScheme:     d.Get("backend_etcd_scheme").(string),
-			EtcdAuthority:  d.Get("backend_etcd_authority").(string),
-			EtcdEndpoints:  d.Get("backend_etcd_endpoints").(string),
-			EtcdUsername:   d.Get("backend_etcd_username").(string),
-			EtcdPassword:   d.Get("backend_etcd_password").(string),
-			EtcdKeyFile:    d.Get("backend_etcd_keyfile").(string),
-			EtcdCertFile:   d.Get("backend_etcd_certfile").(string),
-			EtcdCACertFile: d.Get("backend_etcd_cacertfile").(string),
-		}
-		calicoConfig.BackendType = api.BackendType(backendType)
+		calicoConfig.Spec.DatastoreType = api.DatastoreType(backendType)
 
-		calicoConfig.BackendConfig = &etcdConfig
+		calicoConfig.Spec.EtcdScheme = d.Get("backend_etcd_scheme").(string)
+		calicoConfig.Spec.EtcdAuthority = d.Get("backend_etcd_authority").(string)
+		calicoConfig.Spec.EtcdEndpoints = d.Get("backend_etcd_endpoints").(string)
+		calicoConfig.Spec.EtcdUsername = d.Get("backend_etcd_username").(string)
+		calicoConfig.Spec.EtcdPassword = d.Get("backend_etcd_password").(string)
+		calicoConfig.Spec.EtcdKeyFile = d.Get("backend_etcd_keyfile").(string)
+		calicoConfig.Spec.EtcdCertFile = d.Get("backend_etcd_certfile").(string)
+		calicoConfig.Spec.EtcdCACertFile = d.Get("backend_etcd_cacertfile").(string)
 	} else {
 		return nil, fmt.Errorf("backend_type etcdv2 is the only supported backend at the moment")
 	}

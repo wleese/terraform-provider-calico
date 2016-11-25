@@ -6,7 +6,7 @@ import (
 )
 
 type config struct {
-	config api.ClientConfig
+	config api.CalicoAPIConfig
 	Client *client.Client
 }
 
