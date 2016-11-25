@@ -410,28 +410,27 @@ func resourceCalicoProfileDelete(d *schema.ResourceData, meta interface{}) error
 
 // set Schema Fields based on existing Profile Specs
 func setSchemaFieldsForProfileSpec(profile *api.Profile, d *schema.ResourceData) {
-	specArray := make([]interface{}, 2)
+	specArray := make([]interface{}, 1)
 
+	specMap := make(map[string]interface{})
+	ingressRuleMapArray := make([]interface{}, 1)
 	if profile.Spec.IngressRules != nil && len(profile.Spec.IngressRules) > 0 {
 		resourceRules := getRulesFromProfile(profile.Spec.IngressRules)
 		ruleMap := make(map[string]interface{})
 		ruleMap["rule"] = resourceRules
-		ruleMapArray := make([]interface{}, 1)
-		ruleMapArray[0] = ruleMap
-		ingressMap := make(map[string]interface{})
-		ingressMap["ingress"] = ruleMapArray
-		specArray[1] = ingressMap
+		ingressRuleMapArray[0] = ruleMap
 	}
+	egressRuleMapArray := make([]interface{}, 1)
 	if profile.Spec.EgressRules != nil && len(profile.Spec.EgressRules) > 0 {
 		resourceRules := getRulesFromProfile(profile.Spec.EgressRules)
 		ruleMap := make(map[string]interface{})
 		ruleMap["rule"] = resourceRules
-		ruleMapArray := make([]interface{}, 1)
-		ruleMapArray[0] = ruleMap
-		egressMap := make(map[string]interface{})
-		egressMap["egress"] = ruleMapArray
-		specArray[0] = egressMap
+		egressRuleMapArray[0] = ruleMap
 	}
+	specMap["egress"] = egressRuleMapArray
+	specMap["ingress"] = ingressRuleMapArray
+
+	specArray[0] = specMap
 
 	d.Set("spec", specArray)
 }
@@ -455,15 +454,15 @@ func dToProfileMetadata(d *schema.ResourceData) api.ProfileMetadata {
 	return metadata
 }
 
-// create Profile based on resource data
+// create Profile based on provided resource data
 func dToProfileSpec(d *schema.ResourceData) (api.ProfileSpec, error) {
 	spec := api.ProfileSpec{}
 
-	if v, ok := d.GetOk("spec.1.ingress.0.rule.#"); ok {
+	if v, ok := d.GetOk("spec.0.ingress.0.rule.#"); ok {
 		ingressRules := make([]api.Rule, v.(int))
 
 		for i := range ingressRules {
-			mapStruct := d.Get("spec.1.ingress.0.rule." + strconv.Itoa(i)).(map[string]interface{})
+			mapStruct := d.Get("spec.0.ingress.0.rule." + strconv.Itoa(i)).(map[string]interface{})
 
 			rule, err := resourceMapToRule(mapStruct)
 			if err != nil {
@@ -631,48 +630,67 @@ func resourceMapToRule(mapStruct map[string]interface{}) (api.Rule, error) {
 	if val, ok := mapStruct["source"]; ok {
 		sourceList := val.([]interface{})
 
-		// Only 1 source is allowed however
 		if len(sourceList) > 0 {
-			entityRule := api.EntityRule{}
-			resourceRuleMap := sourceList[0].(map[string]interface{})
+			srcEntityRules, err := srcDstListToEntityRule(sourceList)
+			if err != nil {
+				return rule, err
+			}
+			rule.Source = srcEntityRules
+		}
+	}
 
-			if v, ok := resourceRuleMap["net"]; ok {
-				_, n, err := caliconet.ParseCIDR(v.(string))
-				if err != nil {
-					return rule, err
-				}
-				entityRule.Net = n
-			}
-			if v, ok := resourceRuleMap["selector"]; ok {
-				entityRule.Selector = v.(string)
-			}
-			if v, ok := resourceRuleMap["notSelector"]; ok {
-				entityRule.NotSelector = v.(string)
-			}
-			if v, ok := resourceRuleMap["ports"]; ok {
-				if resourcePortList, ok := v.([]interface{}); ok {
-					portList, err := toPortList(resourcePortList)
-					if err != nil {
-						return rule, err
-					}
-					entityRule.Ports = portList
-				}
-			}
-			if v, ok := resourceRuleMap["notPorts"]; ok {
-				if resourcePortList, ok := v.([]interface{}); ok {
-					portList, err := toPortList(resourcePortList)
-					if err != nil {
-						return rule, err
-					}
-					entityRule.NotPorts = portList
-				}
-			}
+	if val, ok := mapStruct["destination"]; ok {
+		destinationList := val.([]interface{})
 
-			rule.Source = entityRule
+		if len(destinationList) > 0 {
+			destEntityRules, err := srcDstListToEntityRule(destinationList)
+			if err != nil {
+				return rule, err
+			}
+			rule.Destination = destEntityRules
 		}
 	}
 
 	return rule, nil
+}
+
+// convert resource destination/source structs to a api.EntityRule
+func srcDstListToEntityRule(srcDstList []interface{}) (api.EntityRule, error) {
+	entityRule := api.EntityRule{}
+	resourceRuleMap := srcDstList[0].(map[string]interface{})
+
+	if v, ok := resourceRuleMap["net"]; ok {
+		_, n, err := caliconet.ParseCIDR(v.(string))
+		if err != nil {
+			return entityRule, err
+		}
+		entityRule.Net = n
+	}
+	if v, ok := resourceRuleMap["selector"]; ok {
+		entityRule.Selector = v.(string)
+	}
+	if v, ok := resourceRuleMap["notSelector"]; ok {
+		entityRule.NotSelector = v.(string)
+	}
+	if v, ok := resourceRuleMap["ports"]; ok {
+		if resourcePortList, ok := v.([]interface{}); ok {
+			portList, err := toPortList(resourcePortList)
+			if err != nil {
+				return entityRule, err
+			}
+			entityRule.Ports = portList
+		}
+	}
+	if v, ok := resourceRuleMap["notPorts"]; ok {
+		if resourcePortList, ok := v.([]interface{}); ok {
+			portList, err := toPortList(resourcePortList)
+			if err != nil {
+				return entityRule, err
+			}
+			entityRule.NotPorts = portList
+		}
+	}
+	return entityRule, nil
 }
 
 // create an array of Ports
